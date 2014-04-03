@@ -1,0 +1,298 @@
+<?php
+
+	/**
+	 * @file
+	 * Provides a Cardstream Form payment method for Drupal Commerce.
+	 */
+	//error_reporting(-1);
+	//ini_set('display_errors', true);
+
+	/**
+	 * Implements hook_commerce_payment_method_info().
+	 * Displays the Cardstream Payment option to customers at payment stage
+	 */
+	function commerce_cardstream_hosted_commerce_payment_method_info() {
+		$payment_methods = array();
+
+		$payment_methods['commerce_cardstream_hosted'] = array(
+			'title'                => t( 'Debit or Credit Card (via Cardstream Form)' ),
+			'description'          => t( 'Integration with Cardstream Hosted Form.' ),
+			'active'               => true,
+			'offsite'              => true,
+			'offsite_autoredirect' => false,
+			'callbacks'            => array()
+		);
+
+		return $payment_methods;
+	}
+
+
+	function commerce_cardstream_hosted_settings_form( $settings = null ) {
+
+		/*
+		   * Merge default settings into the stored settings array.
+		   */
+		$settings = (array)$settings + array(
+				'merchant_id'      => '100001',
+				'currency_id'      => '826',
+				'country_id'       => '826',
+				'reference_prefix' => 'DrupalCommerce Site',
+				'signature_key'    => 'Circle4Take40Idea',
+				'server_url'       => 'https://gateway.cardstream.com/hosted/',
+			);
+
+		$form = array();
+
+		$form['merchant_id'] = array(
+			'#type'          => 'textfield',
+			'#title'         => t( 'Merchant ID' ),
+			'#description'   => t( 'Your Merchant ID Supplied by Cardstream' ),
+			'#default_value' => $settings['merchant_id'],
+			'#required'      => true,
+		);
+
+		$form['currency_id'] = array(
+			'#type'          => 'textfield',
+			'#title'         => t( 'Currency ID' ),
+			'#description'   => t( 'Your Currency ID Supplied by Cardstream' ),
+			'#default_value' => $settings['currency_id'],
+			'#required'      => true,
+		);
+
+		$form['country_id'] = array(
+			'#type'          => 'textfield',
+			'#title'         => t( 'Country ID' ),
+			'#description'   => t( 'Your Country ID Supplied by Cardstream' ),
+			'#default_value' => $settings['country_id'],
+			'#required'      => true,
+		);
+
+		$form['signature_key'] = array(
+			'#type'          => 'textfield',
+			'#title'         => t( 'Signature Key' ),
+			'#description'   => t( 'This is the signature key you set in your merchant centre' ),
+			'#default_value' => $settings['signature_key'],
+			'#required'      => true,
+		);
+
+		$form['reference_prefix'] = array(
+			'#type'          => 'textfield',
+			'#title'         => t( 'Reference Prefix' ),
+			'#description'   => t( 'This will be the prefix for the order references' ),
+			'#default_value' => $settings['reference_prefix'],
+			'#required'      => true,
+		);
+
+		$form['server_url'] = array(
+			'#type'          => 'textfield',
+			'#title'         => t( 'Cardstream Server URL' ),
+			'#description'   => t( 'This will url for the Cardstream payment gateway - you might need to change this if you need to brand your form' ),
+			'#default_value' => $settings['server_url'],
+			'#required'      => true,
+		);
+
+		return $form;
+	}
+
+	function commerce_cardstream_hosted_redirect_form( $form, &$form_state, $order, $payment_method ) {
+
+		$preshared_key = $payment_method['settings']['signature_key'];
+		$server_url    = $payment_method['settings']['server_url'];
+		$wrapper       = entity_metadata_wrapper( 'commerce_order', $order );
+		$total         = commerce_line_items_total( $wrapper->commerce_line_items );
+
+		// Load customer profile so we can get some details to populate the form
+		$profile = commerce_customer_profile_load( $order->commerce_customer_billing[LANGUAGE_NONE][0]['profile_id'] );
+
+		// Get user billing address from the form
+		$address = $profile->commerce_customer_address[LANGUAGE_NONE][0];
+
+		//Get Order Amount
+
+		$order_amount = $total['amount'];
+
+		//Build form to send to url.
+		$form_data = array(
+			'merchantID'        => $payment_method['settings']['merchant_id'],
+			'countryCode'       => $payment_method['settings']['country_id'],
+			'currencyCode'      => $payment_method['settings']['currency_id'],
+			'type'              => 1,
+			'amount'            => $order_amount,
+			'customerName'      => $address['name_line'],
+			'customerEmail'     => $order->mail,
+			'customerAddress'   => commerce_cardstream_hosted_buildaddress( $address ),
+			'customerPostcode'  => $address['postal_code'],
+			'transactionUnique' => $payment_method['settings']['reference_prefix'] . " - " . $order->order_id,
+			'redirectURL'       => url( 'checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array( 'absolute' => true ) ),
+		);
+
+		ksort( $form_data );
+
+		$signature = hash( "SHA512", http_build_query( $form_data, '', '&' ) . $preshared_key ).'|'.implode(',', array_keys($form_data));
+
+		//Build the form
+		//call a function to remove drupal hidden fields that will cause hash signature to fail
+		$form['#pre_render'][] = 'commerce_cardstream_hosted_form_modify';
+
+		//Set the url of the form
+		$form['#action'] = $server_url;
+
+		foreach ( $form_data as $name => $value ) {
+			if ( !empty( $value ) ) {
+				$form[$name] = array(
+					'#type'  => 'hidden',
+					'#value' => $value
+				);
+			}
+		}
+
+		$form['signature'] = array(
+			'#type'  => 'hidden',
+			'#value' => $signature,
+		);
+
+		$form['submit'] = array(
+			'#type'  => 'submit',
+			'#value' => t( 'Proceed to Cardstream Payment Gateway' ),
+			'#name'  => '',
+		);
+
+		return $form;
+	}
+
+	/*
+	 * This Function creates the address from the users profile ready to post to the form as customerAddress field
+	 *
+	 * */
+
+	function commerce_cardstream_hosted_buildaddress( $address_in ) {
+
+		$address_out = implode( "\n", array(
+										   $address_in['thoroughfare'],
+										   $address_in['premise'],
+										   $address_in['locality'],
+										   $address_in['administrative_area'],
+									  ) );
+
+		return $address_out;
+	}
+
+	/*
+	 * When the user has finised with the Cardstream Hosted Form they re redirected to the following URL:  <yourstore.com>checkout/order_id/payment/return/
+	 * The following function is invoked at that point so we can check the status of the payment and update the drupal commerce order
+	*/
+	function commerce_cardstream_hosted_redirect_form_validate( $order, $payment_method ) {
+
+		$returned_post = $_POST;
+		$signature     = $returned_post['signature'];
+		unset( $returned_post['signature'] );
+		ksort( $returned_post );
+
+		$response_code = $returned_post['responseCode'];
+
+		//check the hash code is expected
+		$check_hash = signature_check( $returned_post, $signature, $payment_method['settings']['signature_key'] );
+
+		if ( $check_hash == 1 ) { //it is
+			watchdog( 'commerce_cardstream_hosted', 'Passed Signature Check for order %order_id, %transaction_id', array(
+																														  '%order_id'       => $order->order_id,
+																														  '%transaction_id' => $returned_post['transactionID']
+																													 ), WATCHDOG_NOTICE );
+		} else { //it isn't
+			watchdog( 'commerce_cardstream_hosted', 'Failed Signature Check for order %order_id, %transaction_id', array(
+																														  '%order_id'       => $order->order_id,
+																														  '%transaction_id' => $returned_post['transactionID']
+																													 ), WATCHDOG_ALERT );
+		}
+
+
+		if ( $check_hash == 1 || $response_code == 0 ) {
+			saveorder_transaction( $order, $payment_method, $returned_post, COMMERCE_PAYMENT_STATUS_SUCCESS );
+
+			return true;
+		} else {
+			saveorder_transaction( $order, $payment_method, $returned_post, COMMERCE_PAYMENT_STATUS_FAILURE );
+
+			return false;
+		}
+
+	}
+
+	/*
+	 *
+	 * The following function checks to see if the hash signature passed from Cardstream matches the posted fields
+	*/
+	function signature_check( $returned_post, $signature, $pre_shared_key ) {
+
+
+		$sig_string = http_build_query( $returned_post, '', '&' ) . $pre_shared_key;
+
+		// Normalise all line endings (CRNL|NLCR|NL|CR) to just NL (%0A)
+		$sig_string = preg_replace( '/%0D%0A|%0A%0D|%0A|%0D/i', '%0A', $sig_string );
+
+		$our_hash = hash( "SHA512", $sig_string );
+
+		return ( $our_hash == $signature );
+	}
+
+
+	function saveorder_transaction( $order, $payment_method, $returned_post, $transaction_status ) {
+
+		// Update the order with the payment status
+		$transaction = commerce_payment_transaction_new( 'commerce_cardstream_hosted', $order->order_id );
+		// Capture some information from the return post message to update the payment transaction message
+		$transaction_message =
+			"Action: " . $returned_post['action'] .
+			", Response Code: " . $returned_post['responseCode'] .
+			", Customer Name: " . $returned_post['customerName'] .
+			", Customer e-Mail: " . $returned_post['customerEmail'] .
+			", Card Type: " . $returned_post['cardType'];
+
+		$transaction->message       = $transaction_message;
+		$transaction->status        = $transaction_status;
+		$transaction->remote_status = $returned_post['responseMessage'];
+		$transaction->remote_id     = $returned_post['transactionID'];
+		$transaction->amount        = $returned_post['amount'];
+
+
+		commerce_payment_transaction_save( $transaction );
+	}
+
+
+	/**
+	 * Implements hook_form_FORM_ID_alter().
+	 * Add some graphic icons to the payment method selection form
+	 */
+	function commerce_cardstream_hosted_form_commerce_checkout_form_alter( &$form, &$form_state ) {
+		// If this checkout form contains the payment method radios...
+		if ( !empty( $form['commerce_payment']['payment_method']['#options'] ) ) {
+			// Loop over its options array looking for a Cardstream option.
+			foreach ( $form['commerce_payment']['payment_method']['#options'] as $key => &$value ) {
+				list( $method_id, $rule_name ) = explode( '|', $key );
+
+				// If we find Cardstream WPS...
+				if ( $method_id == 'commerce_cardstream_hosted' ) {
+					// Prepare the replacement radio button text with icons.
+
+					// Generate logo image markup.
+					$icons_path         = drupal_get_path( 'module', 'commerce_cardstream_hosted' ) . '/theme/';
+					$cardstream_label = t( 'Pay with Credit or Debit Card' );
+					$cardstream_icon  = theme( 'image', array(
+															   'path'       => $icons_path . 'ccard.png',
+															   'title'      => $cardstream_label,
+															   'alt'        => $cardstream_label,
+															   'attributes' => array( 'class' => 'commerce-cardstream-icon' ),
+														  ) );
+
+					// Generate the aggregated markup.
+					$value = $cardstream_icon . '<span class="commerce-cardstream-label">' . $cardstream_label . '</span>';
+
+					// Add the CSS.
+					$form['commerce_payment']['payment_method']['#attached']['css'][] =
+						drupal_get_path( 'module', 'commerce_cardstream_hosted' ) . '/theme/commerce_cardstream_hosted.theme-1389184978000.css';
+
+					break;
+				}
+			}
+		}
+	}

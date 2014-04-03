@@ -1,0 +1,13 @@
+name = Commerce Cardstream Hosted Form
+description = Take payments Cardstream payment gateway Form Method
+core = 7.x
+package = Commerce Payments
+dependencies[] = commerce
+dependencies[] = commerce_payment
+
+; Information added by Drupal.org packaging script on 2014-01-08
+version = "7.x-1.0"
+core = "7.x"
+project = "commerce-payment-cardstream-hostedform"
+datestamp = "1389185959"
+
