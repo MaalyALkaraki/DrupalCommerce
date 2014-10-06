@@ -206,7 +206,7 @@
 		}
 
 
-		if ( $check_hash == 1 || $response_code == 0 ) {
+		if ( $check_hash == 1 && $response_code === "0" ) {
 			saveorder_transaction( $order, $payment_method, $returned_post, COMMERCE_PAYMENT_STATUS_SUCCESS );
 
 			return true;
