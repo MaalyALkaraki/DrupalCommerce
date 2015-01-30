@@ -21,12 +21,9 @@ INSTALLATION
  1. Unzip / untar and copy the 'commerce_cardstream_hosted' folder into the modules directory
     usually: '/sites/all/modules/'. Advanced users may use wget or drush to complete this.
 
- 2. Login into your drupal commerce install and enable the module under Administration -> Modules
-    The module will be in the group Commerce - Payment.
+ 2. Login into your drupal commerce install and enable the module under Administration -> Modules. The module will be in the group Commerce - Payment. To do this, check the box next to 'CardStream Hosted Form' and click 'save configuration' at the bottom from the menu on the left hand side. 
 
- 3. Enter your Cardstream Merchant details.  You need your merchant ID, your secret password
-    as a minimum.  You can optionally add other changes like payment reference prefix and the payment
-	gateway url.
+ 3. Hover over store settings at the top navigation bar and click on 'Payment Methods' from the drop down list. Enter 	your Cardstream Merchant details. Find 'Cardstream' from the list and select edit. Enter your merchantID and Signature key. Click save.
 
 OPERATION
 ---------
