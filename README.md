@@ -3,6 +3,11 @@ DrupalCommerce
 
 This module enables the use of http://www.cardstream.com payment gateway using the Drupal Commerce project http://www.drupalcommerce.org/
 
+COMPATIBILITY
+------------
+
+Compatible with version 1.5 of Drupal Commerce. 
+
 INTRODUCTION
 ------------
 
