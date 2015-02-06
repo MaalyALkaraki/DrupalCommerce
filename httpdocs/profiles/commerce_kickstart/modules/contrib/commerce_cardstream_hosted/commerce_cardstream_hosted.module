@@ -34,7 +34,6 @@
 		   */
 		$settings = (array)$settings + array(
 				'merchant_id'      => '100001',
-				'currency_id'      => '826',
 				'country_id'       => '826',
 				'reference_prefix' => 'DrupalCommerce Site',
 				'signature_key'    => 'Circle4Take40Idea',
@@ -48,14 +47,6 @@
 			'#title'         => t( 'Merchant ID' ),
 			'#description'   => t( 'Your Merchant ID Supplied by Cardstream' ),
 			'#default_value' => $settings['merchant_id'],
-			'#required'      => true,
-		);
-
-		$form['currency_id'] = array(
-			'#type'          => 'textfield',
-			'#title'         => t( 'Currency ID' ),
-			'#description'   => t( 'Your Currency ID Supplied by Cardstream' ),
-			'#default_value' => $settings['currency_id'],
 			'#required'      => true,
 		);
 
@@ -110,12 +101,14 @@
 		//Get Order Amount
 
 		$order_amount = $total['amount'];
-
+		
+		$cur = commerce_currency_load();
+		
 		//Build form to send to url.
 		$form_data = array(
 			'merchantID'        => $payment_method['settings']['merchant_id'],
 			'countryCode'       => $payment_method['settings']['country_id'],
-			'currencyCode'      => $payment_method['settings']['currency_id'],
+			'currencyCode'      => $cur['numeric_code'],
 			'type'              => 1,
 			'amount'            => $order_amount,
 			'customerName'      => $address['name_line'],
